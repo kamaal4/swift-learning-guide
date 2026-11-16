@@ -1,0 +1,73 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Swift Learning Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="guide.css">
+
+<div class="hub">
+  <header class="hub-head">
+    <p class="eyebrow">Personal study notes</p>
+    <h1>Swift Learning Guide</h1>
+    <p class="lede">Chapters of <a href="https://docs.swift.org/swift-book/documentation/the-swift-programming-language/" target="_blank" rel="noopener">The Swift Programming Language</a>, rebuilt as figures you can play with. Read a section, run its figure, then run the matching Swift code yourself.</p>
+  </header>
+
+  <section class="topics" aria-label="Topics">
+    <a class="topic" href="concurrency.html">
+      <div class="topic-art" aria-hidden="true">
+        <svg viewBox="0 0 280 150">
+          <text x="0" y="16" class="mono mute" font-size="10">THREAD 1</text>
+          <rect x="62" y="6" width="70" height="16" rx="4" style="fill:var(--run)"/>
+          <rect x="136" y="6" width="44" height="16" rx="4" style="fill:var(--main)"/>
+          <rect x="184" y="6" width="90" height="16" rx="4" style="fill:var(--run)"/>
+          <text x="0" y="56" class="mono mute" font-size="10">THREAD 2</text>
+          <rect x="62" y="46" width="40" height="16" rx="4" style="fill:var(--actor)"/>
+          <rect x="106" y="46" width="96" height="16" rx="4" style="fill:var(--run)"/>
+          <rect x="206" y="46" width="68" height="16" rx="4" style="fill:var(--actor)"/>
+          <text x="0" y="96" class="mono mute" font-size="10">AWAIT</text>
+          <rect x="62" y="86" width="120" height="16" rx="4" style="fill:none;stroke:var(--wait);stroke-width:1.5;stroke-dasharray:4 3"/>
+          <text x="70" y="98" class="mono" font-size="9" style="fill:var(--wait)">downloadPhoto…</text>
+          <line x1="62" y1="124" x2="274" y2="124" style="stroke:var(--line)"/>
+          <text x="62" y="142" class="mono mute" font-size="9">0s</text>
+          <text x="262" y="142" class="mono mute" font-size="9">2s</text>
+        </svg>
+      </div>
+      <div class="topic-body">
+        <p class="eyebrow">Chapter · Swift 6.4</p>
+        <h2>Concurrency</h2>
+        <p>async/await, async let, task groups, cancellation, actors, the main actor and Sendable.</p>
+        <div class="topic-meta">
+          <span>13 sections</span>
+          <span>12 interactive figures</span>
+          <span>about 45 minutes</span>
+          <span id="prog-text" class="tnum">0 of 13 done</span>
+        </div>
+        <div class="meter" aria-hidden="true"><span id="prog-bar"></span></div>
+        <span class="topic-cta">Open the chapter →</span>
+      </div>
+    </a>
+  </section>
+
+  <section class="how" aria-labelledby="how-h">
+    <h2 id="how-h">How to use it</h2>
+    <ol>
+      <li><b>Read a section</b><span class="muted">Each one follows the book's order and ends with one key takeaway.</span></li>
+      <li><b>Play with the figure</b><span class="muted">Step through, run, cancel and toggle things. The colours mean the same thing in every figure.</span></li>
+      <li><b>Run the real code</b><span class="muted">Every example is in <a href="ConcurrencyExamples.swift" target="_blank" rel="noopener">ConcurrencyExamples.swift</a>. Run it with <code>swift ConcurrencyExamples.swift</code>.</span></li>
+    </ol>
+  </section>
+
+  <p class="hub-foot">Built from the Swift 6.4 edition of the book. Your progress is saved in this browser only.</p>
+</div>
+
+<script>
+  (function () {
+    var done = [];
+    try { done = JSON.parse(localStorage.getItem("swift-guide:concurrency") || "[]"); } catch (e) {}
+    var n = Array.isArray(done) ? done.length : 0;
+    document.getElementById("prog-text").textContent = n + " of 13 done";
+    document.getElementById("prog-bar").style.width = (n / 13 * 100) + "%";
+  })();
+</script>

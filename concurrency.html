@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Swift Concurrency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="index.html">Swift Learning Guide</a><span aria-hidden="true">/</span><b>Concurrency</b></nav>
+    <div class="prog"><span id="prog-text" class="tnum">0 / 13 done</span><div class="meter" aria-hidden="true"><span id="prog-bar"></span></div></div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="rail" aria-label="Sections">
+    <details id="toc">
+      <summary>Sections <span id="toc-count" class="muted tnum">0 / 13</span></summary>
+      <ol>
+        <li><a href="#why"><span class="n"><span>01</span></span>Why concurrency</a></li>
+        <li><a href="#async-functions"><span class="n"><span>02</span></span>Async functions &amp; await</a></li>
+        <li><a href="#async-sequences"><span class="n"><span>03</span></span>Async sequences</a></li>
+        <li><a href="#async-let"><span class="n"><span>04</span></span>Parallel calls: async let</a></li>
+        <li><a href="#task-groups"><span class="n"><span>05</span></span>Tasks &amp; task groups</a></li>
+        <li><a href="#cancellation"><span class="n"><span>06</span></span>Task cancellation</a></li>
+        <li><a href="#unstructured"><span class="n"><span>07</span></span>Unstructured tasks</a></li>
+        <li><a href="#isolation"><span class="n"><span>08</span></span>Isolation</a></li>
+        <li><a href="#main-actor"><span class="n"><span>09</span></span>The main actor</a></li>
+        <li><a href="#actors"><span class="n"><span>10</span></span>Actors</a></li>
+        <li><a href="#global-actors"><span class="n"><span>11</span></span>Global actors</a></li>
+        <li><a href="#sendable"><span class="n"><span>12</span></span>Sendable types</a></li>
+        <li><a href="#recap"><span class="n"><span>13</span></span>Recap &amp; self-check</a></li>
+      </ol>
+    </details>
+  </nav>
+
+  <main>
+    <!-- ================= INTRO ================= -->
+    <header class="intro">
+      <p class="eyebrow">Swift Learning Guide · Chapter</p>
+      <h1>Concurrency</h1>
+      <p class="lede">How Swift runs many things at once without letting them trample each other's data. Every figure on this page moves: step through it, run it, cancel it, break it.</p>
+      <p class="meta"><span>Based on The Swift Programming Language (6.4)</span><span>13 sections</span><span>Runnable code: <a href="ConcurrencyExamples.swift" target="_blank" rel="noopener">ConcurrencyExamples.swift</a></span></p>
+
+      <figure class="fig">
+        <figcaption><span class="eyebrow">Fig 0</span><b>The kitchen model</b><span class="muted">One picture to hang every idea on</span></figcaption>
+        <div class="bench">
+          <div class="legend">
+            <div><span class="k c-run"><i></i>Cook</span><span class="s">A <b>thread</b>. Does one thing at a time. You never hire or manage cooks yourself.</span></div>
+            <div><span class="k"><i></i>Order ticket</span><span class="s">A <b>task</b>: one unit of work. All async code runs as part of some task.</span></div>
+            <div><span class="k c-wait"><i></i>Oven timer</span><span class="s"><b>await</b>. The order pauses; the cook doesn't stand and stare, they take another ticket.</span></div>
+            <div><span class="k c-ok"><i></i>Sub-tickets</span><span class="s">A <b>task group</b>: one order split into parts cooked side by side.</span></div>
+            <div><span class="k c-actor"><i></i>Cashier</span><span class="s">An <b>actor</b>. One window, one customer at a time, so the till never gets mixed up.</span></div>
+            <div><span class="k c-main"><i></i>Front counter</span><span class="s">The <b>main actor</b>: the only place that faces customers, meaning your UI.</span></div>
+          </div>
+        </div>
+      </figure>
+    </header>
+
+    <!-- ================= 1 WHY ================= -->
+    <section class="sec" id="why">
+      <div class="sec-head"><p class="eyebrow">Section 1</p><h2>Why concurrency</h2></div>
+      <p>In Swift, <em>concurrency</em> means two ideas used together:</p>
+      <ul>
+        <li><b>Asynchronous</b> code can pause partway through, say while it waits for the network, and carry on later. Only one piece runs at a time, but nothing sits idle.</li>
+        <li><b>Parallel</b> code runs at the same moment on different CPU cores. Four cores, four pieces of code at once.</li>
+      </ul>
+
+      <figure class="fig" id="f1">
+        <figcaption><span class="eyebrow">Fig 1</span><b>Taking turns vs running side by side</b><span class="muted">Same kinds of jobs, 6 seconds</span></figcaption>
+        <div class="bench">
+          <div class="stack">
+            <div class="card"><h3>Asynchronous · 1 core</h3><svg id="f1-async" viewBox="0 0 640 100" role="img" aria-label="One core alternates between UI, network and parsing work while a network request waits"></svg><p class="small muted">One core takes turns. While the request waits for the server, the core parses instead of idling.</p></div>
+            <div class="card"><h3>Parallel · 4 cores</h3><svg id="f1-par" viewBox="0 0 640 160" role="img" aria-label="Four cores each run a different job at the same time"></svg><p class="small muted">Four cores run four jobs at the same moment.</p></div>
+          </div>
+          <div class="controls"><button class="btn primary" id="f1-play">▶ Play</button><span class="small muted"><span class="c-main">■</span> UI &nbsp;<span class="c-run">■</span> network &nbsp;<span class="c-wait">▭</span> waiting at await</span></div>
+        </div>
+      </figure>
+
+      <p>The extra flexibility has a price. You don't know ahead of time which code will run at the same moment, or in what order. When two pieces of code touch the same mutable data at the same time, that's a <b>data race</b>. With Swift's language support for concurrency, most data races become compile-time errors. The few the compiler can't see stop the program when they happen, instead of corrupting data quietly.</p>
+
+      <div class="note"><b>What about threads?</b><p>Swift's model is built on threads, but you never handle them directly. An async function can give up its thread while it waits, so other code can use that thread. When it resumes, it may be on a different thread: Swift makes no promise about which one.</p></div>
+
+      <figure class="fig" id="f1b">
+        <figcaption><span class="eyebrow">Fig 1b</span><b>Same job, two styles</b><span class="muted">List a gallery, download the first photo, show it</span></figcaption>
+        <div class="bench">
+          <div class="controls"><div class="seg" role="group" aria-label="Code style"><button type="button" data-style="cb" aria-pressed="true">Completion handlers</button><button type="button" data-style="aw" aria-pressed="false">async / await</button></div></div>
+          <pre class="code" id="f1b-cb"><code class="language-swift">listPhotos(inGallery: "Summer Vacation") { photoNames in
+    let sortedNames = photoNames.sorted()
+    let name = sortedNames[0]
+    downloadPhoto(named: name) { photo in
+        show(photo)
+    }
+}</code></pre>
+          <pre class="code" id="f1b-aw" hidden><code class="language-swift">let photoNames = await listPhotos(inGallery: "Summer Vacation")
+let sortedNames = photoNames.sorted()
+let name = sortedNames[0]
+let photo = await downloadPhoto(named: name)
+show(photo)</code></pre>
+          <p class="small muted" id="f1b-note">Every step that waits adds another closure and another level of nesting. Real code gets deep fast.</p>
+        </div>
+      </figure>
+
+      <div class="kitchen"><b>In the kitchen</b><p>Without concurrency, a cook stands in front of the oven until the bread is done. With it, the cook slides the tray in, takes the next ticket, and comes back when the timer rings.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Asynchronous means it can pause and resume. Parallel means it runs at the same time. Swift gives you both, and checks your code for data races.</p></div><button class="done-btn" type="button" data-done="why" aria-pressed="false">Mark as done</button></aside>
+    </section>
+
+    <!-- ================= 2 ASYNC FUNCTIONS ================= -->
+    <section class="sec" id="async-functions">
+      <div class="sec-head"><p class="eyebrow">Section 2</p><h2>Async functions and await</h2></div>
+      <p>An ordinary function runs to the end, throws an error, or never returns. An <b>asynchronous function</b> can do all of that, and it can also <b>pause in the middle</b> while it waits for something.</p>
+      <pre class="code"><code class="language-swift">func listPhotos(inGallery name: String) async -> [String] {
+    let result = // ... some asynchronous networking code ...
+    return result
+}</code></pre>
+      <p>Write <code>async</code> after the parameters, before the <code>-&gt;</code>, in the same place as <code>throws</code>. A function that does both is <code>async throws</code>. When you call one, you put <code>await</code> in front. <code>await</code> marks a <b>possible suspension point</b>: execution may pause there. Code never pauses anywhere else, so every place your function can pause is visible in the source.</p>
+
+      <figure class="fig" id="f2">
+        <figcaption><span class="eyebrow">Fig 2</span><b>What happens at each await</b><span class="muted">Step through it</span></figcaption>
+        <div class="bench">
+          <pre class="code" id="f2-code"><code class="language-swift">let photoNames = await listPhotos(inGallery: "Summer Vacation")
+let sortedNames = photoNames.sorted()
+let name = sortedNames[0]
+let photo = await downloadPhoto(named: name)
+show(photo)</code></pre>
+          <div class="stage" id="f2-stage">
+            <div class="lane shelf"><span class="lbl">Suspended</span></div>
+            <div class="lane"><span class="lbl">Thread 1</span></div>
+            <div class="lane"><span class="lbl">Thread 2</span></div>
+            <div class="tk c-run" id="f2-you">your code</div>
+            <div class="tk other c-muted gone" id="f2-other">other code</div>
+          </div>
+        </div>
+        <div class="fig-foot">
+          <p class="caption-live" id="f2-cap" aria-live="polite"></p>
+          <div class="controls"><button class="btn" type="button" id="f2-prev">← Back</button><button class="btn primary" type="button" id="f2-next">Next step →</button><button class="btn" type="button" id="f2-reset">Restart</button><span class="stepcount" id="f2-count"></span></div>
+        </div>
+      </figure>
+
+      <p>Pausing at an <code>await</code> is also called <b>yielding the thread</b>: Swift parks your function and runs other code on that thread in the meantime.</p>
+
+      <h3>Where you can write await</h3>
+      <ul>
+        <li>In the body of an async function, method or property.</li>
+        <li>In the <code>static main()</code> method of a type marked <code>@main</code>.</li>
+        <li>Inside an unstructured task, <code>Task { … }</code> (section 7).</li>
+      </ul>
+
+      <h3>await works like try, with one big difference</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>Throwing</th><th>Asynchronous</th></tr></thead>
+          <tbody>
+            <tr><td>Mark the declaration</td><td><code>throws</code></td><td><code>async</code></td></tr>
+            <tr><td>Mark the call</td><td><code>try</code></td><td><code>await</code></td></tr>
+            <tr><td>Can call others of its kind</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+            <tr><td>Call it from code without the marker</td><td><span class="yes">Yes:</span> wrap it in <code>do</code>/<code>catch</code> or <code>Result</code></td><td><span class="no">No:</span> there's no safe way to wait for async code from sync code</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The standard library leaves out a "call this async function from sync code and wait" helper on purpose, because building one leads to subtle races, threading bugs and deadlocks. That decides how you add concurrency to an existing project: <b>top-down</b>. Convert the top layer first, then the layers it calls, one at a time.</p>
+
+      <figure class="fig" id="f2b">
+        <figcaption><span class="eyebrow">Fig 2b</span><b>Converting an app to async</b><span class="muted">Try both directions</span></figcaption>
+        <div class="bench">
+          <div class="layers" id="f2b-layers"></div>
+          <p class="status" id="f2b-status" aria-live="polite"></p>
+          <div class="controls"><button class="btn primary" type="button" id="f2b-top">Convert the next layer down</button><button class="btn" type="button" id="f2b-bottom">Try the bottom layer first</button><button class="btn" type="button" id="f2b-reset">Reset</button></div>
+        </div>
+      </figure>
+
+      <p>While learning, <code>Task.sleep(for:)</code> is a handy stand-in for slow work: it pauses the current task for at least the given time. It can throw (it ends early if the task is cancelled), so you call it with <code>try await</code>, and the function becomes <code>async throws</code>:</p>
+      <pre class="code"><code class="language-swift">func listPhotos(inGallery name: String) async throws -> [String] {
+    try await Task.sleep(for: .seconds(2))
+    return ["IMG001", "IMG99", "IMG0404"]
+}
+
+let photos = try await listPhotos(inGallery: "A Rainy Weekend")</code></pre>
+
+      <div class="kitchen"><b>In the kitchen</b><p><code>await</code> is the oven timer. The ticket goes on the waiting shelf, the cook takes another ticket, and when the timer rings any free cook may pick yours back up.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p><code>async</code> marks a function that can pause; <code>await</code> marks every spot where it might. Sync code can't wait for async code, so convert from the top down.</p></div><button class="done-btn" type="button" data-done="async-functions" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 2 of <code>ConcurrencyExamples.swift</code>.</p>
+    </section>
+
+    <!-- ================= 3 ASYNC SEQUENCES ================= -->
+    <section class="sec" id="async-sequences">
+      <div class="sec-head"><p class="eyebrow">Section 3</p><h2>Async sequences</h2></div>
+      <p><code>listPhotos</code> hands back the whole array at once, after every element is ready. An <b>asynchronous sequence</b> hands you one element at a time, as soon as each one is available.</p>
+      <pre class="code"><code class="language-swift">import Foundation
+
+let handle = FileHandle.standardInput
+for try await line in handle.bytes.lines {
+    print(line)
+}</code></pre>
+      <p>A <code>for await</code> loop (<code>for try await</code> when the sequence can throw) may pause at the start of every iteration while it waits for the next element. To use your own type in one, conform it to <code>AsyncSequence</code>, the same way conforming to <code>Sequence</code> makes a type work in a plain <code>for</code>-<code>in</code> loop.</p>
+
+      <figure class="fig" id="f3">
+        <figcaption><span class="eyebrow">Fig 3</span><b>All at once vs one at a time</b><span class="muted">Three photo names, one every second</span></figcaption>
+        <div class="bench">
+          <div class="belts">
+            <div class="beltrow">
+              <div class="lhs"><span class="small"><code>let names = await listPhotos(…)</code> <span class="muted">returns an array</span></span><div class="track" id="f3-a"><span class="sus tag c-wait" id="f3-sus-a">suspended</span></div></div>
+              <div class="console" id="f3-con-a" aria-live="polite"></div>
+            </div>
+            <div class="beltrow">
+              <div class="lhs"><span class="small"><code>for await name in photoFeed</code> <span class="muted">an AsyncSequence</span></span><div class="track" id="f3-b"><span class="sus tag c-wait" id="f3-sus-b">suspended</span></div></div>
+              <div class="console" id="f3-con-b" aria-live="polite"></div>
+            </div>
+          </div>
+          <div class="controls"><button class="btn primary" type="button" id="f3-play">▶ Play</button><span class="small muted">The right-hand boxes show when your code gets each name.</span></div>
+        </div>
+      </figure>
+
+      <div class="kitchen"><b>In the kitchen</b><p>An array is the whole tray arriving at once. An async sequence is a conveyor belt: you plate each dish the moment it rolls out.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p><code>for await</code> handles each element as it arrives, pausing between elements instead of waiting for all of them.</p></div><button class="done-btn" type="button" data-done="async-sequences" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 3 of <code>ConcurrencyExamples.swift</code> builds a small <code>AsyncStream</code>.</p>
+    </section>
+
+    <!-- ================= 4 ASYNC LET ================= -->
+    <section class="sec" id="async-let">
+      <div class="sec-head"><p class="eyebrow">Section 4</p><h2>Calling async functions in parallel</h2></div>
+      <p>Three <code>await</code> calls in a row run one after another. Each download finishes before the next one starts, even though none of them depends on the others. Write <code>async let</code> instead and the call starts <b>without waiting</b>. All three downloads start at once and can run at the same time if the system has room. You write <code>await</code> only where you need the results.</p>
+
+      <figure class="fig" id="f4">
+        <figcaption><span class="eyebrow">Fig 4</span><b>The download race</b><span class="muted">Real time, same durations as the runnable file</span></figcaption>
+        <div class="bench">
+          <div class="card">
+            <h3>One by one with <code>await</code> · <span class="c-run tnum" id="f4-tseq">4.5s</span></h3>
+            <pre class="code"><code class="language-swift">let firstPhoto = await downloadPhoto(named: photoNames[0])
+let secondPhoto = await downloadPhoto(named: photoNames[1])
+let thirdPhoto = await downloadPhoto(named: photoNames[2])
+
+let photos = [firstPhoto, secondPhoto, thirdPhoto]
+show(photos)</code></pre>
+            <svg id="f4-seq" viewBox="0 0 640 120" role="img" aria-label="Sequential downloads: 1.0, 2.0 and 1.5 seconds, back to back, 4.5 seconds in total"></svg>
+          </div>
+          <div class="card">
+            <h3>Together with <code>async let</code> · <span class="c-ok tnum" id="f4-tpar">2.0s</span></h3>
+            <pre class="code"><code class="language-swift">async let firstPhoto = downloadPhoto(named: photoNames[0])
+async let secondPhoto = downloadPhoto(named: photoNames[1])
+async let thirdPhoto = downloadPhoto(named: photoNames[2])
+
+let photos = await [firstPhoto, secondPhoto, thirdPhoto]
+show(photos)</code></pre>
+            <svg id="f4-par" viewBox="0 0 640 140" role="img" aria-label="Parallel downloads all start at 0 and the results are ready at 2.0 seconds, when the slowest finishes"></svg>
+          </div>
+          <div class="controls"><button class="btn primary" type="button" id="f4-play">▶ Race</button><span class="small muted">Notice: the <code>async let</code> lines have no <code>await</code>. The waiting happens on the line that reads the results.</span></div>
+        </div>
+      </figure>
+
+      <div class="two">
+        <div class="card"><span class="tag c-run">await</span><h3>When the next line needs the result</h3><p class="small">The work runs one step after another.</p></div>
+        <div class="card"><span class="tag c-ok">async let</span><h3>When you need the result later</h3><p class="small">The work can run in parallel.</p></div>
+      </div>
+      <p>Both let other code run while they're waiting, both mark the waiting spot with <code>await</code>, and you can mix them freely in the same function.</p>
+
+      <div class="kitchen"><b>In the kitchen</b><p>Sequential <code>await</code>: one dish into the oven, wait, take it out, next dish. <code>async let</code>: all three dishes go in together and you wait once, for the slowest.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p><code>async let</code> starts work now and collects it later. Total time becomes the slowest call instead of the sum of all of them.</p></div><button class="done-btn" type="button" data-done="async-let" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 4 of <code>ConcurrencyExamples.swift</code> measured 4.6s vs 2.0s.</p>
+    </section>
+
+    <!-- ================= 5 TASK GROUPS ================= -->
+    <section class="sec" id="task-groups">
+      <div class="sec-head"><p class="eyebrow">Section 5</p><h2>Tasks and task groups</h2></div>
+      <p>A <b>task</b> is a unit of work that runs asynchronously, and all async code runs inside some task. A single task does one thing at a time, but Swift can run many tasks at once.</p>
+      <p><code>async let</code> quietly creates a <b>child task</b>. When you don't know ahead of time how many children you need, use a <b>task group</b>: <code>withTaskGroup</code> creates one, and <code>addTask</code> adds a child. Every child in a group has the same parent, and children can have children of their own. Because these parent/child links are explicit, this style is called <b>structured concurrency</b>.</p>
+
+      <figure class="fig" id="f5">
+        <figcaption><span class="eyebrow">Fig 5</span><b>A task group as a tree</b><span class="muted">Add children, run the group, then try the four benefits</span></figcaption>
+        <div class="bench">
+          <div class="tree" id="f5-tree" data-demo="">
+            <div class="node parent"><span>withTaskGroup</span><span class="badge-x bx-prio-parent">priority raised to high</span><span class="badge-x bx-cancel">cancelled</span><span class="badge-x bx-local">requestID "A1"</span></div>
+            <div class="kids" id="f5-kids"></div>
+          </div>
+          <div class="controls"><button class="btn" type="button" id="f5-add">+ Add child task</button><button class="btn primary" type="button" id="f5-run">▶ Run group</button><button class="btn" type="button" id="f5-reset">Reset</button></div>
+          <div class="console" id="f5-out" aria-live="polite"></div>
+          <div class="chips" role="group" aria-label="Benefits of structured concurrency">
+            <button class="chip" type="button" data-demo="wait" aria-pressed="false">You can't forget to wait</button>
+            <button class="chip" type="button" data-demo="priority" aria-pressed="false">Priority escalates</button>
+            <button class="chip" type="button" data-demo="cancel" aria-pressed="false">Cancellation flows down</button>
+            <button class="chip" type="button" data-demo="locals" aria-pressed="false">Task-local values flow down</button>
+          </div>
+          <p class="small" id="f5-explain" aria-live="polite">Tap a benefit to see it on the tree.</p>
+        </div>
+      </figure>
+
+      <p>As soon as any child finishes, <code>for await photo in group</code> hands you its result. Nothing guarantees the order children finish in, so results arrive in <b>completion order</b>, not the order you added them. To return a value from the group, collect inside the closure:</p>
+      <pre class="code"><code class="language-swift">let photos = await withTaskGroup(of: Data.self) { group in
+    let photoNames = await listPhotos(inGallery: "Summer Vacation")
+    for name in photoNames {
+        group.addTask {
+            return await downloadPhoto(named: name)
+        }
+    }
+
+    var results: [Data] = []
+    for await photo in group {
+        results.append(photo)
+    }
+
+    return results
+}</code></pre>
+      <div class="note"><b>Throwing children</b><p>If the child tasks can throw, use <code>withThrowingTaskGroup(of:returning:body:)</code> instead.</p></div>
+
+      <div class="kitchen"><b>In the kitchen</b><p>A big order is split into sub-tickets. The order can't go out until every sub-ticket is back, and if the customer leaves, every sub-ticket is binned.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Task groups give you any number of child tasks. The parent always waits for its children, and cancellation, priority and task-local values flow through the tree.</p></div><button class="done-btn" type="button" data-done="task-groups" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 5 of <code>ConcurrencyExamples.swift</code>. Added IMG001, IMG99, IMG0404; got back IMG001, IMG0404, IMG99.</p>
+    </section>
+
+    <!-- ================= 6 CANCELLATION ================= -->
+    <section class="sec" id="cancellation">
+      <div class="sec-head"><p class="eyebrow">Section 6</p><h2>Task cancellation</h2></div>
+      <p>Cancellation in Swift is <b>cooperative</b>. Cancelling a task doesn't stop it. It sets a flag, and the task's own code checks that flag at sensible points and decides how to stop. Usually that means one of three things:</p>
+      <ul>
+        <li>throw an error such as <code>CancellationError</code></li>
+        <li>return <code>nil</code> or an empty collection</li>
+        <li>return the work finished so far</li>
+      </ul>
+
+      <figure class="fig" id="f6">
+        <figcaption><span class="eyebrow">Fig 6</span><b>Cancel a gallery download</b><span class="muted">Start it, then press Cancel partway through</span></figcaption>
+        <div class="bench">
+          <div class="controls"><button class="btn primary" type="button" id="f6-start">▶ Start</button><button class="btn danger" type="button" id="f6-cancel" disabled>■ Cancel</button><button class="btn" type="button" id="f6-reset">Reset</button><span class="small muted">This kitchen has two cooks, so at most two downloads run at once.</span></div>
+          <div class="two">
+            <div class="prows" id="f6-rows"></div>
+            <div class="console" id="f6-log" aria-live="polite"></div>
+          </div>
+          <p class="report" id="f6-result">Press Start, then Cancel while photos are still downloading.</p>
+        </div>
+      </figure>
+
+      <p>The figure runs the book's cancellation-aware version of the group:</p>
+      <pre class="code"><code class="language-swift">let photos = await withTaskGroup { group in
+    let photoNames = await listPhotos(inGallery: "Summer Vacation")
+    for name in photoNames {
+        let added = group.addTaskUnlessCancelled {
+            Task.isCancelled ? nil : await downloadPhoto(named: name)
+        }
+        guard added else { break }
+    }
+
+    var results: [Data] = []
+    for await photo in group {
+        if let photo { results.append(photo) }
+    }
+    return results
+}</code></pre>
+      <ul>
+        <li><code>addTaskUnlessCancelled</code> refuses to add new work once the group is cancelled, and returns <code>false</code>.</li>
+        <li><code>guard added else { break }</code> stops the loop at that point.</li>
+        <li>Each child checks <code>Task.isCancelled</code> before downloading and returns <code>nil</code> if it's set.</li>
+        <li>The results skip the <code>nil</code>s, so you keep a <b>partial result</b> instead of throwing away finished downloads.</li>
+      </ul>
+      <p>In this example <code>downloadPhoto</code> doesn't check for cancellation itself, so a download that already started runs to the end. That's what "cooperative" means in practice.</p>
+
+      <div class="three">
+        <div class="card"><span class="tag c-cancel">try Task.checkCancellation()</span><p class="small">Throws if the task is cancelled. The error carries out of the task and stops all of its work. Simplest to write.</p></div>
+        <div class="card"><span class="tag c-wait">Task.isCancelled</span><p class="small">A <code>Bool</code> you check yourself, so you can clean up first: close connections, delete temporary files.</p></div>
+        <div class="card"><span class="tag c-main">withTaskCancellationHandler</span><p class="small">Runs a closure the moment the task is cancelled, for work that has to hear about it right away.</p></div>
+      </div>
+      <pre class="code"><code class="language-swift">let task = Task {
+    await withTaskCancellationHandler {
+        // ...
+    } onCancel: {
+        print("Canceled!")
+    }
+}
+
+// ... some time later...
+task.cancel()  // Prints "Canceled!"</code></pre>
+      <div class="note"><b>Two details</b><p>Even with a handler, cancellation stays cooperative. The handler runs while the task is still running, so don't share mutable state between the two. And to check a task from outside it, use the instance property <code>task.isCancelled</code>; inside, use the type property <code>Task.isCancelled</code>.</p></div>
+
+      <div class="kitchen"><b>In the kitchen</b><p>The manager calls out "order cancelled!" Cooks finish the step they're on, check the board before starting anything new, and hand over whatever dishes are already done.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Cancelling only raises a flag. Your code checks it with <code>isCancelled</code> or <code>checkCancellation()</code> and decides what to return, often a partial result.</p></div><button class="done-btn" type="button" data-done="cancellation" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 6 of <code>ConcurrencyExamples.swift</code> cancels mid-loop and keeps 4 of 6 photos.</p>
+    </section>
+
+    <!-- ================= 7 UNSTRUCTURED ================= -->
+    <section class="sec" id="unstructured">
+      <div class="sec-head"><p class="eyebrow">Section 7</p><h2>Unstructured concurrency</h2></div>
+      <p>Sometimes a task can't have a parent. A button tap, for example, is synchronous code that needs to kick off async work. An <b>unstructured task</b> has no parent. You get complete freedom in how you manage it, and complete responsibility for getting it right.</p>
+      <ul>
+        <li><code>Task { … }</code> creates a task that behaves like the code around it: same actor isolation, same priority, same task-local values.</li>
+        <li><code>Task.detached { … }</code> creates a task that inherits none of those.</li>
+      </ul>
+      <p>Both return a handle you can <code>await</code> for the result or <code>cancel()</code>:</p>
+      <pre class="code"><code class="language-swift">let newPhoto = // ... some photo data ...
+let handle = Task {
+    return await add(newPhoto, toGalleryNamed: "Spring Adventures")
+}
+let result = await handle.value</code></pre>
+
+      <figure class="fig" id="f7">
+        <figcaption><span class="eyebrow">Fig 7</span><b>What a new task inherits</b><span class="muted">Spawn tasks from main-actor code</span></figcaption>
+        <div class="bench">
+          <div class="spawn">
+            <div class="ctx">
+              <span class="eyebrow c-main">The code creating the task</span>
+              <div class="row"><span>isolation</span><b class="c-main">@MainActor</b></div>
+              <div class="row"><span>priority</span><b>.high</b></div>
+              <div class="row"><span>requestID (task-local)</span><b>"A1"</b></div>
+              <div class="controls"><button class="btn primary" type="button" id="f7-task">Task { }</button><button class="btn" type="button" id="f7-det">Task.detached { }</button></div>
+            </div>
+            <div class="tickets" id="f7-out" aria-live="polite"></div>
+          </div>
+          <p class="small muted"><span class="c-ok">✓</span> inherited from the creating code &nbsp; ✗ not inherited (the task starts with its own default)</p>
+        </div>
+      </figure>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th><code>Task { }</code></th><th><code>Task.detached { }</code></th></tr></thead>
+          <tbody>
+            <tr><td>Has a parent task</td><td class="no">No</td><td class="no">No</td></tr>
+            <tr><td>Inherits actor isolation</td><td class="yes">Yes</td><td class="no">No</td></tr>
+            <tr><td>Inherits priority</td><td class="yes">Yes</td><td class="no">No</td></tr>
+            <tr><td>Inherits task-local values</td><td class="yes">Yes</td><td class="no">No</td></tr>
+            <tr><td>Returns a handle (<code>.value</code>, <code>.cancel()</code>)</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="kitchen"><b>In the kitchen</b><p>A child task is a sub-ticket clipped to its order. <code>Task { }</code> is a new ticket written at the same station, with the same notes. <code>Task.detached</code> is a ticket handed to the kitchen next door, which knows nothing about your station.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Prefer structured tasks. Use <code>Task { }</code> to start async work from sync code, and <code>Task.detached</code> only when you really want a clean slate.</p></div><button class="done-btn" type="button" data-done="unstructured" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 7 of <code>ConcurrencyExamples.swift</code> prints what each kind inherits.</p>
+    </section>
+
+    <!-- ================= 8 ISOLATION ================= -->
+    <section class="sec" id="isolation">
+      <div class="sec-head"><p class="eyebrow">Section 8</p><h2>Isolation</h2></div>
+      <p>Splitting work into tasks is half the story. The other half is the data those tasks share, such as your app's UI state. Swift guarantees that while you read or change a piece of data, no other code is changing it at the same time. That guarantee is called <b>data isolation</b>, and data gets it in one of three ways:</p>
+      <div class="three">
+        <div class="card"><span class="tag c-ok">immutable</span><h3>It can't change</h3><pre class="code"><code class="language-swift">let label = "Outdoors"</code></pre><p class="small">Nobody can modify a constant, so reading it is always safe.</p></div>
+        <div class="card"><span class="tag c-run">one task</span><h3>Only this task can reach it</h3><pre class="code"><code class="language-swift">var total = 0  // local</code></pre><p class="small">No other code has a reference to a local variable. If a closure captures it, Swift makes sure that closure isn't run concurrently.</p></div>
+        <div class="card"><span class="tag c-actor">actor</span><h3>An actor guards it</h3><pre class="code"><code class="language-swift">await logger.update(with: 31)</code></pre><p class="small">Code isolated to the actor can use its data safely. Everyone else waits for a turn.</p></div>
+      </div>
+
+      <figure class="fig" id="f8">
+        <figcaption><span class="eyebrow">Fig 8</span><b>A data race, then the same work behind an actor</b><span class="muted">Each task adds 1 to the count, 5 times</span></figcaption>
+        <div class="bench">
+          <div class="controls"><div class="seg" role="group" aria-label="Protection"><button type="button" data-mode="race" aria-pressed="true">No protection</button><button type="button" data-mode="actor" aria-pressed="false">Behind an actor</button></div><button class="btn primary" type="button" id="f8-run">▶ Run</button></div>
+          <div class="race">
+            <div class="racer" id="f8-a"><span class="eyebrow c-run">Task A</span><span class="op">ready</span><span class="dots"><i></i><i></i><i></i><i></i><i></i></span></div>
+            <div class="shared" id="f8-shared"><span class="lbl">count</span><span class="box tnum" id="f8-count">0</span><span class="lbl" id="f8-kind">a plain class</span></div>
+            <div class="racer" id="f8-b"><span class="eyebrow c-run">Task B</span><span class="op">ready</span><span class="dots"><i></i><i></i><i></i><i></i><i></i></span></div>
+          </div>
+          <p class="report" id="f8-report">Adding 1 means three steps: read the count, add 1, write it back. Run it and watch what happens when two tasks overlap.</p>
+        </div>
+      </figure>
+      <div class="note"><b>Swift won't let you write the unprotected version</b><p>In Swift 6 mode, sharing a plain mutable class between tasks like this is a compile-time error. The figure shows the bug the compiler is preventing. Section 8 of the runnable file forces it with <code>@unchecked Sendable</code>: on our run, 10 tasks × 10,000 increments came out as 92,520 instead of 100,000.</p></div>
+
+      <div class="kitchen"><b>In the kitchen</b><p>Two cooks keep a tally on a whiteboard. Both read 4, both write 5, and one order disappears. Hand the whiteboard to the cashier and make everyone ask the cashier to update it.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Data is safe when it can't change, when only one task can reach it, or when an actor guards it.</p></div><button class="done-btn" type="button" data-done="isolation" aria-pressed="false">Mark as done</button></aside>
+    </section>
+
+    <!-- ================= 9 MAIN ACTOR ================= -->
+    <section class="sec" id="main-actor">
+      <div class="sec-head"><p class="eyebrow">Section 9</p><h2>The main actor</h2></div>
+      <p>An <b>actor</b> protects mutable data by making code take turns with it. In most apps the most important one is the <b>main actor</b>. It protects all the data your UI uses, and it takes turns rendering the UI, handling events, and running your code that reads or updates the UI. Until you start using concurrency, everything runs on the main actor. As you find slow work, you move it off.</p>
+      <div class="note"><b>Main actor vs main thread</b><p>Closely related, not the same thing. Code on the main actor runs on the main thread, which is why the two terms get mixed up. Your code works with the main actor; the main thread is a lower-level detail underneath it.</p></div>
+      <p>Mark a function <code>@MainActor</code> and it always runs on the main actor. From main-actor code you call it like any function. From anywhere else you need <code>await</code>, because switching to the main actor is a possible suspension point.</p>
+
+      <figure class="fig" id="f9">
+        <figcaption><span class="eyebrow">Fig 9</span><b>Download in the background, hop to the main actor</b><span class="muted">Step through it</span></figcaption>
+        <div class="bench">
+          <pre class="code" id="f9-code"><code class="language-swift">func downloadAndShowPhoto(named name: String) async {
+    let photo = await downloadPhoto(named: name)
+    await show(photo)
+}
+
+@MainActor
+func show(_: Data) {
+    // ... UI code to display the photo ...
+}</code></pre>
+          <div class="hop">
+            <div class="stage" id="f9-stage">
+              <div class="lane mainlane"><span class="lbl">Main actor</span></div>
+              <div class="lane"><span class="lbl">Off the main actor</span></div>
+              <div class="tk c-run" id="f9-you">downloadPhoto</div>
+              <div class="tk other c-main" id="f9-other">UI work</div>
+            </div>
+            <div class="phone" aria-label="App screen"><span class="bar"></span><div class="grid"><span class="ph">IMG001</span><span class="ph">IMG99</span><span class="ph" id="f9-new">…</span><span class="ph"></span></div></div>
+          </div>
+        </div>
+        <div class="fig-foot">
+          <p class="caption-live" id="f9-cap" aria-live="polite"></p>
+          <div class="controls"><button class="btn" type="button" id="f9-prev">← Back</button><button class="btn primary" type="button" id="f9-next">Next step →</button><button class="btn" type="button" id="f9-reset">Restart</button><span class="stepcount" id="f9-count"></span></div>
+        </div>
+      </figure>
+
+      <p>This is the everyday pattern: do slow work in the background, then switch to the main actor for the UI update. To make a closure run on the main actor, write <code>@MainActor</code> before <code>in</code>. Unlike <code>downloadAndShowPhoto</code>, this version doesn't wait for the UI update to finish:</p>
+      <pre class="code"><code class="language-swift">let photo = await downloadPhoto(named: "Trees at Sunrise")
+Task { @MainActor in
+    show(photo)
+}</code></pre>
+
+      <h3>Whole type or just some members</h3>
+      <figure class="fig" id="f9b">
+        <figcaption><span class="eyebrow">Fig 9b</span><b>Where @MainActor applies</b><span class="muted">Toggle the two versions of PhotoGallery</span></figcaption>
+        <div class="bench">
+          <div class="controls"><div class="seg" role="group" aria-label="Where to put @MainActor"><button type="button" data-m="type" aria-pressed="true">On the whole type</button><button type="button" data-m="members" aria-pressed="false">Only on UI members</button></div></div>
+          <div class="two">
+            <div>
+              <pre class="code" id="f9b-type"><code class="language-swift">@MainActor
+struct PhotoGallery {
+    var photoNames: [String]
+    var hasCachedPhotos = false
+
+    func drawUI() { /* ... UI code ... */ }
+    func cachePhotos() { /* ... networking code ... */ }
+}</code></pre>
+              <pre class="code" id="f9b-members" hidden><code class="language-swift">struct PhotoGallery {
+    @MainActor var photoNames: [String]
+    var hasCachedPhotos = false
+
+    @MainActor func drawUI() { /* ... UI code ... */ }
+    func cachePhotos() { /* ... networking code ... */ }
+}</code></pre>
+            </div>
+            <div class="members" id="f9b-list">
+              <div class="member"><span>photoNames</span><span class="tag c-main">@MainActor</span></div>
+              <div class="member"><span>hasCachedPhotos</span><span class="tag c-main" data-ui="0">@MainActor</span></div>
+              <div class="member"><span>drawUI()</span><span class="tag c-main">@MainActor</span></div>
+              <div class="member"><span>cachePhotos()</span><span class="tag c-main" data-ui="0">@MainActor</span></div>
+              <p class="small muted" id="f9b-note">Everything in the type runs on the main actor, including the networking code that doesn't need to.</p>
+            </div>
+          </div>
+        </div>
+      </figure>
+
+      <p>You often don't write <code>@MainActor</code> at all, because frameworks write it for you and it spreads:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Marked @MainActor</th><th>Also becomes @MainActor</th></tr></thead>
+          <tbody>
+            <tr><td>a protocol: <code>@MainActor protocol View</code></td><td>types that conform: <code>struct PhotoGalleryView: View</code></td></tr>
+            <tr><td>a base class</td><td>its subclasses</td></tr>
+            <tr><td>a property wrapper's <code>wrappedValue</code></td><td>every property that uses the wrapper</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>So in SwiftUI, your views and their state properties are already on the main actor.</p>
+
+      <div class="kitchen"><b>In the kitchen</b><p>Only the front counter serves customers. Food is cooked in the back; when it's ready, it waits for a free moment at the counter to be handed over.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Do slow work off the main actor, then <code>await</code> a <code>@MainActor</code> function to touch the UI. Frameworks like SwiftUI already put your views on the main actor.</p></div><button class="done-btn" type="button" data-done="main-actor" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 9 of <code>ConcurrencyExamples.swift</code>.</p>
+    </section>
+
+    <!-- ================= 10 ACTORS ================= -->
+    <section class="sec" id="actors">
+      <div class="sec-head"><p class="eyebrow">Section 10</p><h2>Actors</h2></div>
+      <p>Swift gives you the main actor, and you can define your own. Like classes, actors are <b>reference types</b>. Unlike classes, an actor lets <b>only one task at a time</b> touch its mutable state, so code in many tasks can safely share one actor instance.</p>
+      <pre class="code"><code class="language-swift">actor TemperatureLogger {
+    let label: String
+    var measurements: [Int]
+    private(set) var max: Int
+
+    init(label: String, measurement: Int) {
+        self.label = label
+        self.measurements = [measurement]
+        self.max = measurement
+    }
+}
+
+extension TemperatureLogger {
+    func update(with measurement: Int) {
+        measurements.append(measurement)
+        if measurement > max {
+            max = measurement
+        }
+    }
+}</code></pre>
+      <p>From outside, reading a property means <code>await</code>: if another task is using the logger right now, you wait your turn. Code inside the actor, like <code>update(with:)</code>, uses the properties directly with no <code>await</code>.</p>
+      <div class="two">
+        <div class="card"><span class="tag c-cancel">compile error</span><pre class="code"><code class="language-swift">print(logger.max)</code></pre><p class="small muted">error: actor-isolated property 'max' cannot be accessed from outside of the actor</p></div>
+        <div class="card"><span class="tag c-ok">works</span><pre class="code"><code class="language-swift">print(await logger.max)
+// Prints "25"</code></pre><p class="small muted">A possible suspension point: you may wait for the actor to be free.</p></div>
+      </div>
+      <p>Only code running on an actor can touch that actor's state. That guarantee is called <b>actor isolation</b>. Why one task at a time? Because updates often break an object's rules for a moment. Halfway through <code>update(with:)</code>, the new reading is already in the array but <code>max</code> hasn't caught up.</p>
+
+      <figure class="fig" id="f10">
+        <figcaption><span class="eyebrow">Fig 10</span><b>Who sees the half-finished update?</b><span class="muted">Task 1 records 31 while Task 2 reads a summary</span></figcaption>
+        <div class="bench">
+          <div class="controls"><div class="seg" role="group" aria-label="Logger kind"><button type="button" data-k="class" aria-pressed="true">As a class</button><button type="button" data-k="actor" aria-pressed="false">As an actor</button></div><button class="btn" type="button" id="f10-auto">▶ Play</button></div>
+          <div class="two">
+            <div class="actorbox plain" id="f10-box">
+              <span class="eyebrow" id="f10-kind">class TemperatureLogger</span>
+              <div class="mailbox" id="f10-mail" hidden></div>
+              <div class="statebox"><span>measurements</span><span class="v" id="f10-m">[25]</span><span>max</span><span class="v" id="f10-max">25</span></div>
+            </div>
+            <div class="prows">
+              <div class="racer" id="f10-t1"><span class="eyebrow c-run">Task 1 · update(with: 31)</span><span class="op"></span></div>
+              <div class="racer" id="f10-t2"><span class="eyebrow c-run">Task 2 · read summary</span><span class="op"></span></div>
+            </div>
+          </div>
+          <p class="report" id="f10-report"></p>
+        </div>
+        <div class="fig-foot">
+          <p class="caption-live" id="f10-cap" aria-live="polite"></p>
+          <div class="controls"><button class="btn" type="button" id="f10-prev">← Back</button><button class="btn primary" type="button" id="f10-next">Next step →</button><button class="btn" type="button" id="f10-reset">Restart</button><span class="stepcount" id="f10-count"></span></div>
+        </div>
+      </figure>
+
+      <h3>Three guarantees that work together</h3>
+      <ol>
+        <li>Code between two possible suspension points runs in sequence, without being interrupted by other concurrent code.</li>
+        <li>Code that touches an actor's state runs only on that actor.</li>
+        <li>An actor runs only one piece of code at a time.</li>
+      </ol>
+      <p>So keep any step that temporarily breaks the rules free of <code>await</code>. Better still, put it in a <b>synchronous</b> method. A sync method can never contain a suspension point, and if someone later adds an <code>await</code> to it, they get a compile error instead of a bug:</p>
+      <pre class="code"><code class="language-swift">extension TemperatureLogger {
+    func convertFahrenheitToCelsius() {
+        for i in measurements.indices {
+            measurements[i] = (measurements[i] - 32) * 5 / 9
+        }
+    }
+}</code></pre>
+      <p>Halfway through that loop, some readings are Fahrenheit and some Celsius, and nobody else can see it.</p>
+
+      <div class="kitchen"><b>In the kitchen</b><p>The cashier serves one customer at a time. Nobody gets to peek at the till while it's being counted.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>An actor is a reference type that serves one task at a time. Access from outside needs <code>await</code>. Keep temporarily broken state between two awaits, never across one.</p></div><button class="done-btn" type="button" data-done="actors" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 10 of <code>ConcurrencyExamples.swift</code>. Uncomment <code>print(logger.max)</code> to see the error yourself.</p>
+    </section>
+
+    <!-- ================= 11 GLOBAL ACTORS ================= -->
+    <section class="sec" id="global-actors">
+      <div class="sec-head"><p class="eyebrow">Section 11</p><h2>Global actors</h2></div>
+      <p>The main actor is a single, global instance of the <code>MainActor</code> type. A normal actor type can have many instances, each with its own isolated state, so to use one you need to say <em>which</em> instance. <code>MainActor</code> only ever has one instance, so the type name alone identifies it. That's why it can be used as an attribute.</p>
+
+      <figure class="fig">
+        <figcaption><span class="eyebrow">Fig 11</span><b>Many instances vs exactly one</b></figcaption>
+        <div class="bench">
+          <div class="two">
+            <div class="card">
+              <span class="tag c-actor">actor TemperatureLogger</span>
+              <div class="insts"><span class="inst">Outdoors</span><span class="inst">Tea kettle</span><span class="inst">Freezer</span></div>
+              <p class="small">Each instance is its own island. You reach one through its reference: <code>await kettle.max</code>.</p>
+            </div>
+            <div class="card">
+              <span class="tag c-main">MainActor</span>
+              <div class="insts"><span class="inst main">MainActor.shared</span></div>
+              <p class="small">One instance, forever. The type names it, so an attribute is enough: <code>@MainActor func show(…)</code>.</p>
+            </div>
+          </div>
+        </div>
+      </figure>
+
+      <p>You can create your own singleton actor with <code>@globalActor</code> and use it the same way:</p>
+      <pre class="code"><code class="language-swift">@globalActor
+actor PhotoLibraryActor {
+    static let shared = PhotoLibraryActor()
+}
+
+@PhotoLibraryActor
+enum PhotoLibrary {
+    static var saved: [String] = []
+    static func save(_ name: String) { saved.append(name) }
+}
+
+await PhotoLibrary.save("IMG001")</code></pre>
+
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>A global actor is a singleton actor you apply as an attribute. <code>@MainActor</code> is the one you'll use most.</p></div><button class="done-btn" type="button" data-done="global-actors" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 11 of <code>ConcurrencyExamples.swift</code>.</p>
+    </section>
+
+    <!-- ================= 12 SENDABLE ================= -->
+    <section class="sec" id="sendable">
+      <div class="sec-head"><p class="eyebrow">Section 12</p><h2>Sendable types</h2></div>
+      <p>Tasks and actors divide a program into pieces that can safely run at once. The part of a task or actor that holds mutable state is called a <b>concurrency domain</b>. Some data can't be shared between domains: it has mutable state and nothing stopping two pieces of code from changing it at once.</p>
+
+      <figure class="fig">
+        <figcaption><span class="eyebrow">Fig 12</span><b>Crossing between concurrency domains</b></figcaption>
+        <div class="bench">
+          <div class="cross">
+            <div class="domain c-run"><span class="eyebrow">A task</span><span class="packet c-ok">TemperatureReading</span><span class="packet c-cancel">Counter (a class)</span></div>
+            <div class="gate"><span class="bar"></span>Is it Sendable?</div>
+            <div class="domain act c-actor"><span class="eyebrow">actor TemperatureLogger</span><span class="packet c-ok">TemperatureReading ✓</span><span class="small muted">Counter stays behind: two domains changing one counter is a data race.</span></div>
+          </div>
+        </div>
+      </figure>
+
+      <p>A type that can be passed from one domain to another, as an argument to an actor method or as a task's result, is <b>sendable</b>. You mark it by conforming to the <code>Sendable</code> protocol. The protocol has no methods, but Swift enforces its rules. A type is sendable in one of three ways:</p>
+      <div class="three">
+        <div class="card"><h3>A value type of sendable parts</h3><p class="small">A struct whose stored properties are sendable, or an enum whose associated values are.</p></div>
+        <div class="card"><h3>No mutable state at all</h3><p class="small">A struct or class with only read-only properties, all of them sendable.</p></div>
+        <div class="card"><h3>It protects its own state</h3><p class="small">A <code>@MainActor</code> class, or a class that serializes access on a particular thread or queue.</p></div>
+      </div>
+      <pre class="code"><code class="language-swift">struct TemperatureReading: Sendable {
+    var measurement: Int
+}
+
+extension TemperatureLogger {
+    func addReading(from reading: TemperatureReading) {
+        measurements.append(reading.measurement)
+    }
+}
+
+let logger = TemperatureLogger(label: "Tea kettle", measurement: 85)
+let reading = TemperatureReading(measurement: 45)
+await logger.addReading(from: reading)</code></pre>
+      <p>A struct or enum that isn't <code>public</code> and has only sendable parts is sendable automatically, so writing <code>: Sendable</code> above is optional. To opt a type <em>out</em> explicitly, write an unavailable conformance:</p>
+      <pre class="code"><code class="language-swift">struct FileDescriptor {
+    let rawValue: Int
+}
+
+@available(*, unavailable)
+extension FileDescriptor: Sendable {}</code></pre>
+
+      <figure class="fig" id="f12">
+        <figcaption><span class="eyebrow">Fig 12b</span><b>Sendable or not?</b><span class="muted">8 types, all checked against the Swift 6.4 compiler</span></figcaption>
+        <div class="bench">
+          <div class="quiz" id="f12-quiz"></div>
+          <div class="controls"><span class="score tnum" id="f12-score">0 / 8 answered</span><button class="btn" type="button" id="f12-reset">Start over</button></div>
+        </div>
+      </figure>
+
+      <div class="note"><b>Going further</b><p>Swift 6 also lets you <em>hand off</em> a non-sendable value that nothing else uses afterwards (region-based isolation). It complains only when the value could be used on both sides at once, with an error like "sending value of non-Sendable type … risks causing data races". Sendable is about values that are safe to <em>share</em>.</p></div>
+
+      <div class="kitchen"><b>In the kitchen</b><p>Passing a sealed takeaway box from one station to another is fine. Passing a pot that two cooks will stir at the same time is not.</p></div>
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Sendable means safe to share between tasks and actors: value types of sendable parts, types with no mutable state, and types that protect their own state.</p></div><button class="done-btn" type="button" data-done="sendable" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Run it: section 12 of <code>ConcurrencyExamples.swift</code>.</p>
+    </section>
+
+    <!-- ================= 13 RECAP ================= -->
+    <section class="sec" id="recap">
+      <div class="sec-head"><p class="eyebrow">Section 13</p><h2>Recap and self-check</h2></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Write this</th><th>It means</th><th>Section</th></tr></thead>
+          <tbody>
+            <tr><td><code>async</code></td><td>This function can pause partway through</td><td><a href="#async-functions">2</a></td></tr>
+            <tr><td><code>await</code></td><td>A possible suspension point; other code may run meanwhile</td><td><a href="#async-functions">2</a></td></tr>
+            <tr><td><code>for await</code></td><td>Loop over an async sequence, pausing for each element</td><td><a href="#async-sequences">3</a></td></tr>
+            <tr><td><code>async let</code></td><td>Start a child task now, collect its result later</td><td><a href="#async-let">4</a></td></tr>
+            <tr><td><code>withTaskGroup</code></td><td>Any number of child tasks; results in completion order</td><td><a href="#task-groups">5</a></td></tr>
+            <tr><td><code>Task.isCancelled</code>, <code>Task.checkCancellation()</code></td><td>Check the cancellation flag yourself</td><td><a href="#cancellation">6</a></td></tr>
+            <tr><td><code>withTaskCancellationHandler</code></td><td>Run code the moment the task is cancelled</td><td><a href="#cancellation">6</a></td></tr>
+            <tr><td><code>Task { }</code></td><td>Unstructured task that inherits isolation, priority and task-locals</td><td><a href="#unstructured">7</a></td></tr>
+            <tr><td><code>Task.detached { }</code></td><td>Unstructured task that inherits nothing</td><td><a href="#unstructured">7</a></td></tr>
+            <tr><td><code>@MainActor</code></td><td>Runs on the main actor, where the UI lives</td><td><a href="#main-actor">9</a></td></tr>
+            <tr><td><code>actor</code></td><td>A reference type that serves one task at a time</td><td><a href="#actors">10</a></td></tr>
+            <tr><td><code>@globalActor</code></td><td>Your own singleton actor, used as an attribute</td><td><a href="#global-actors">11</a></td></tr>
+            <tr><td><code>Sendable</code></td><td>Safe to share between concurrency domains</td><td><a href="#sendable">12</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Six quick questions</h3>
+      <div class="quiz" id="mcq"></div>
+      <p>Then open <code>ConcurrencyExamples.swift</code> and change things: swap <code>async let</code> back to <code>await</code>, cancel sooner, delete an <code>await</code> and read the compiler error.</p>
+
+      <aside class="takeaway"><div><h3>Key takeaway</h3><p>Mark the waits, structure the tasks, isolate the data, and only share what's Sendable.</p></div><button class="done-btn" type="button" data-done="recap" aria-pressed="false">Mark as done</button></aside>
+      <p class="runit">Code samples adapted from <a href="https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/" target="_blank" rel="noopener">The Swift Programming Language: Concurrency</a> (Swift 6.4).</p>
+    </section>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="concurrency.js"></script>
+</body>
+</html>
